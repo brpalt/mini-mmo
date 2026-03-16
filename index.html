@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEON TRENCH RUNNER</title>
+    <style>
+        body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', Courier, monospace; }
+        canvas { display: block; }
+        #ui {
+            position: absolute; top: 20px; left: 20px; color: #0ff;
+            text-shadow: 0 0 10px #0ff; pointer-events: none;
+        }
+        #msg {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            color: #f0f; text-align: center; display: none;
+        }
+        .glitch { font-size: 3rem; font-weight: bold; animation: glitch 1s infinite; }
+        @keyframes glitch {
+            0% { transform: skew(0deg); }
+            20% { transform: skew(10deg); color: #0ff; }
+            40% { transform: skew(-10deg); color: #f0f; }
+            100% { transform: skew(0deg); }
+        }
+    </style>
+</head>
+<body>
+
+<div id="ui">
+    <div>DISTANCE: <span id="dist">0</span>m</div>
+    <div>SPEED: <span id="speed">0</span>km/h</div>
+</div>
+
+<div id="msg">
+    <div class="glitch">SYSTEM CRASH</div>
+    <p>PRESS 'R' TO REBOOT PILOT</p>
+</div>
+
+<canvas id="gameCanvas"></canvas>
+
+<script>
+/**
+ * ENGINE CONFIGURATION
+ */
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const distEl = document.getElementById('dist');
+const speedEl = document.getElementById('speed');
+const msgEl = document.getElementById('msg');
+
+let width, height;
+let gameActive = true;
+let speed = 15;
+let distance = 0;
+let player = { x: 0, y: 0, targetX: 0, targetY: 0 };
+let obstacles = [];
+let particles = [];
+
+// Initialize Canvas
+function resize() {
+    width = canvas.width = window.innerWidth;
+    height = canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// Input Handling
+window.addEventListener('mousemove', (e) => {
+    player.targetX = (e.clientX - width / 2) / (width / 2);
+    player.targetY = (e.clientY - height / 2) / (height / 2);
+});
+
+window.addEventListener('keydown', (e) => {
+    if (e.key.toLowerCase() === 'r' && !gameActive) resetGame();
+});
+
+/**
+ * GAME LOGIC
+ */
+function spawnObstacle() {
+    obstacles.push({
+        z: 1000, // Distance from player
+        x: (Math.random() - 0.5) * 2,
+        y: (Math.random() - 0.5) * 2,
+        size: 50 + Math.random() * 100,
+        color: `hsl(${Math.random() * 360}, 100%, 50%)`
+    });
+}
+
+function resetGame() {
+    obstacles = [];
+    particles = [];
+    distance = 0;
+    speed = 15;
+    gameActive = true;
+    msgEl.style.display = 'none';
+    loop();
+}
+
+function update() {
+    if (!gameActive) return;
+
+    distance += Math.floor(speed / 10);
+    speed += 0.005; // Constant acceleration
+
+    // Smooth ship movement
+    player.x += (player.targetX - player.x) * 0.1;
+    player.y += (player.targetY - player.y) * 0.1;
+
+    // Update UI
+    distEl.innerText = distance;
+    speedEl.innerText = Math.floor(speed * 10);
+
+    // Spawn obstacles
+    if (Math.random() < 0.1) spawnObstacle();
+
+    // Move obstacles
+    for (let i = obstacles.length - 1; i >= 0; i--) {
+        let o = obstacles[i];
+        o.z -= speed;
+
+        // Collision detection (if z is close to 0)
+        if (o.z < 50 && o.z > -50) {
+            let dx = o.x - player.x;
+            let dy = o.y - player.y;
+            let hitRange = 0.15; // Hitbox sensitivity
+            if (Math.abs(dx) < hitRange && Math.abs(dy) < hitRange) {
+                gameActive = false;
+                msgEl.style.display = 'block';
+            }
+        }
+
+        if (o.z < -100) obstacles.splice(i, 1);
+    }
+}
+
+/**
+ * RENDERING ENGINE
+ */
+function draw() {
+    // Space Background
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, width, height);
+
+    // Draw Trench lines
+    ctx.strokeStyle = '#222';
+    ctx.lineWidth = 2;
+    for(let i = 0; i < 10; i++) {
+        let z = ((Date.now() / 10) % 100) + (i * 100);
+        let scale = 500 / z;
+        let size = 2000 * scale;
+        ctx.strokeRect(width/2 - size/2, height/2 - size/2, size, size);
+    }
+
+    // Sort obstacles by depth (Painters Algorithm)
+    obstacles.sort((a, b) => b.z - a.z);
+
+    obstacles.forEach(o => {
+        let scale = 600 / o.z;
+        if (scale < 0) return;
+
+        let screenX = (width / 2) + (o.x - player.x) * width * scale;
+        let screenY = (height / 2) + (o.y - player.y) * height * scale;
+        let drawSize = o.size * scale;
+
+        // Draw Glow
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = o.color;
+        ctx.fillStyle = o.color;
+        ctx.fillRect(screenX - drawSize / 2, screenY - drawSize / 2, drawSize, drawSize);
+        ctx.shadowBlur = 0;
+    });
+
+    // Draw Crosshair
+    ctx.strokeStyle = '#0ff';
+    ctx.beginPath();
+    ctx.arc(width/2, height/2, 20, 0, Math.PI * 2);
+    ctx.moveTo(width/2 - 30, height/2); ctx.lineTo(width/2 + 30, height/2);
+    ctx.moveTo(width/2, height/2 - 30); ctx.lineTo(width/2, height/2 + 30);
+    ctx.stroke();
+
+    if (gameActive) requestAnimationFrame(loop);
+}
+
+function loop() {
+    update();
+    draw();
+}
+
+loop();
+</script>
+</body>
+</html>
