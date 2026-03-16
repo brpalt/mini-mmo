@@ -1,0 +1,10 @@
+body, html { margin: 0; padding: 0; overflow: hidden; background: #222; font-family: sans-serif; }
+#gameCanvas { display: block; background: #eee; }
+#ui {
+    position: absolute; top: 10px; left: 10px;
+    background: rgba(255, 255, 255, 0.9);
+    padding: 15px; border-radius: 8px; z-index: 10;
+}
+#status { font-weight: bold; color: #d35400; margin-bottom: 5px; }
+input { padding: 5px; width: 120px; }
+button { cursor: pointer; padding: 5px 10px; background: #27ae60; color: white; border: none; }
