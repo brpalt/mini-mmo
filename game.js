@@ -5,18 +5,22 @@ canvas.height = window.innerHeight;
 
 let peer, myId, connections = [];
 let players = {};
-let items = []; // {x, y, type, id}
+let items = {}; // Object instead of Array for easier syncing by ID
 let frame = 0;
+let isHost = false;
 
 const localPlayer = {
-    username: "Guest",
-    x: 100, y: 100,
-    color: "#" + Math.floor(Math.random()*16777215).toString(16),
+    username: "Player",
+    x: Math.random() * (canvas.width - 100) + 50,
+    y: Math.random() * (canvas.height - 100) + 50,
+    color: "#00ffcc",
     hp: 100,
     animStep: 0,
     isAttacking: false,
+    attackFrame: 0,
     inventory: [],
-    facing: 1 // 1 for right, -1 for left
+    facing: 1,
+    speed: 4
 };
 
 const keys = {};
@@ -39,11 +43,15 @@ function initNetwork() {
         players[myId] = localPlayer;
         updateLoop();
     });
-    peer.on('connection', conn => setupConnection(conn));
+    peer.on('connection', conn => {
+        isHost = true; // If someone connects to you, you are the host
+        setupConnection(conn);
+    });
 }
 
 function joinGame() {
     const targetId = document.getElementById('joinId').value;
+    isHost = false; // You joined someone else
     setupConnection(peer.connect(targetId));
 }
 
@@ -55,20 +63,58 @@ function setupConnection(conn) {
     conn.on('data', data => {
         if(data.type === 'update') players[data.id] = data.data;
         if(data.type === 'init') players[data.id] = data.data;
-        if(data.type === 'attack') handleCombat(data.id);
-        if(data.type === 'spawnItem') items.push(data.item);
+        if(data.type === 'attack_event') handleHitDetection(data.id);
+        if(data.type === 'spawnItem') items[data.item.id] = data.item;
+        if(data.type === 'removeItem') delete items[data.itemId];
     });
 }
 
-// --- Animation & Drawing ---
+// --- Combat Logic ---
+function handleHitDetection(attackerId) {
+    const attacker = players[attackerId];
+    if (!attacker) return;
+    
+    // Distance check for melee hit
+    const dx = localPlayer.x - attacker.x;
+    const dy = localPlayer.y - attacker.y;
+    const distance = Math.sqrt(dx*dx + dy*dy);
+
+    // If attacker is close and facing the player
+    if (distance < 60) {
+        localPlayer.hp -= 15;
+        // Visual feedback (flash red)
+        localPlayer.color = "#ff0000";
+        setTimeout(() => localPlayer.color = "#00ffcc", 100);
+
+        if(localPlayer.hp <= 0) {
+            localPlayer.hp = 100;
+            localPlayer.x = Math.random() * canvas.width;
+            localPlayer.y = Math.random() * canvas.height;
+        }
+    }
+}
+
+// --- Drawing Functions ---
+function drawMap() {
+    ctx.strokeStyle = "#222";
+    ctx.lineWidth = 1;
+    const spacing = 50;
+    for(let i=0; i<canvas.width; i+=spacing) {
+        ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, canvas.height); ctx.stroke();
+    }
+    for(let i=0; i<canvas.height; i+=spacing) {
+        ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(canvas.width, i); ctx.stroke();
+    }
+}
+
 function drawStickman(p) {
-    const {x, y, color, animStep, facing, isAttacking} = p;
+    const {x, y, color, animStep, facing, isAttacking, attackFrame} = p;
     ctx.strokeStyle = color;
     ctx.lineWidth = 3;
     
-    // Walk animation math
-    const legMove = Math.sin(animStep) * 15;
-    const armMove = isAttacking ? 20 : Math.cos(animStep) * 10;
+    const legMove = Math.sin(animStep) * 12;
+    // If attacking, arm lunges forward
+    const armMove = isAttacking ? 25 : Math.cos(animStep) * 8;
 
     // Head
     ctx.beginPath(); ctx.arc(x, y - 40, 10, 0, 7); ctx.stroke();
@@ -76,79 +122,90 @@ function drawStickman(p) {
     ctx.beginPath(); ctx.moveTo(x, y - 30); ctx.lineTo(x, y); ctx.stroke();
     // Arms
     ctx.beginPath(); ctx.moveTo(x, y - 25); 
-    ctx.lineTo(x + (facing * armMove), y - 10); ctx.stroke();
+    ctx.lineTo(x + (facing * armMove), y - 15); ctx.stroke();
     // Legs
     ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - legMove, y + 20); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + legMove, y + 20); ctx.stroke();
 
-    // Username & Health
-    ctx.fillStyle = "black";
-    ctx.font = "12px Arial";
-    ctx.fillText(p.username, x - 20, y - 60);
-    ctx.fillStyle = "red";
-    ctx.fillRect(x - 15, y - 55, 30 * (p.hp/100), 4);
-}
-
-function handleCombat(attackerId) {
-    const attacker = players[attackerId];
-    if (!attacker) return;
-    
-    // Check if local player is hit
-    const dist = Math.hypot(localPlayer.x - attacker.x, localPlayer.y - attacker.y);
-    if (dist < 40 && attackerId !== myId) {
-        localPlayer.hp -= 10;
-        if(localPlayer.hp <= 0) {
-            localPlayer.x = Math.random() * canvas.width;
-            localPlayer.hp = 100;
-        }
-    }
+    // Name and HP
+    ctx.fillStyle = "white";
+    ctx.textAlign = "center";
+    ctx.fillText(p.username, x, y - 65);
+    ctx.fillStyle = "#333";
+    ctx.fillRect(x - 20, y - 60, 40, 5);
+    ctx.fillStyle = "#00ffcc";
+    ctx.fillRect(x - 20, y - 60, 40 * (p.hp/100), 5);
 }
 
 function updateLoop() {
     frame++;
     let moved = false;
 
-    // Movement Logic
-    if (keys['w']) { localPlayer.y -= 3; moved = true; }
-    if (keys['s']) { localPlayer.y += 3; moved = true; }
-    if (keys['a']) { localPlayer.x -= 3; localPlayer.facing = -1; moved = true; }
-    if (keys['d']) { localPlayer.x += 3; localPlayer.facing = 1; moved = true; }
+    // 1. Movement
+    if (keys['w'] || keys['ArrowUp']) { localPlayer.y -= localPlayer.speed; moved = true; }
+    if (keys['s'] || keys['ArrowDown']) { localPlayer.y += localPlayer.speed; moved = true; }
+    if (keys['a'] || keys['ArrowLeft']) { localPlayer.x -= localPlayer.speed; localPlayer.facing = -1; moved = true; }
+    if (keys['d'] || keys['ArrowRight']) { localPlayer.x += localPlayer.speed; localPlayer.facing = 1; moved = true; }
     
-    if (moved) localPlayer.animStep += 0.2;
+    if (moved) localPlayer.animStep += 0.15;
     
-    // Attack logic (Spacebar)
+    // 2. Attacking (Space)
     if (keys[' '] && !localPlayer.isAttacking) {
         localPlayer.isAttacking = true;
-        connections.forEach(c => c.send({type: 'attack', id: myId}));
-        setTimeout(() => localPlayer.isAttacking = false, 200);
+        // Notify others that I am attacking
+        connections.forEach(c => c.send({type: 'attack_event', id: myId}));
+        setTimeout(() => localPlayer.isAttacking = false, 300);
     }
 
-    // Sync to others
+    // 3. Item Collision & Sync
+    Object.keys(items).forEach(id => {
+        const item = items[id];
+        const dist = Math.hypot(localPlayer.x - item.x, localPlayer.y - item.y);
+        
+        if(dist < 25) {
+            // Apply Powerup
+            if(item.type === 'speed') { localPlayer.speed = 7; setTimeout(() => localPlayer.speed = 4, 5000); }
+            if(item.type === 'heal') { localPlayer.hp = Math.min(100, localPlayer.hp + 30); }
+            
+            localPlayer.inventory.push(item.type);
+            document.getElementById('item-list').innerText = localPlayer.inventory.slice(-3).join(", ");
+            
+            // Tell everyone to remove this item
+            connections.forEach(c => c.send({type: 'removeItem', itemId: id}));
+            delete items[id];
+        }
+    });
+
+    // 4. Host Logic (Spawn Items)
+    if (isHost && frame % 200 === 0) {
+        const types = ['speed', 'heal', 'shield'];
+        const newItem = { 
+            x: Math.random() * (canvas.width - 50) + 25, 
+            y: Math.random() * (canvas.height - 50) + 25, 
+            id: 'item_' + Date.now(),
+            type: types[Math.floor(Math.random() * types.length)]
+        };
+        items[newItem.id] = newItem;
+        connections.forEach(c => c.send({type: 'spawnItem', item: newItem}));
+    }
+
+    // 5. Broadcast Position
     connections.forEach(c => c.send({type: 'update', id: myId, data: localPlayer}));
 
-    // Draw everything
+    // 6. Draw Everything
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    drawMap();
     
     // Draw Items
-    items.forEach((item, index) => {
-        ctx.fillStyle = "gold";
-        ctx.beginPath(); ctx.arc(item.x, item.y, 8, 0, 7); ctx.fill();
-        // Collection logic
-        if(Math.hypot(localPlayer.x - item.x, localPlayer.y - item.y) < 20) {
-            localPlayer.inventory.push("PowerUp");
-            document.getElementById('item-list').innerText = localPlayer.inventory.join(", ");
-            items.splice(index, 1);
-        }
+    Object.values(items).forEach(item => {
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = item.type === 'speed' ? '#00ffff' : '#ff00ff';
+        ctx.fillStyle = ctx.shadowColor;
+        ctx.beginPath(); ctx.arc(item.x, item.y, 10, 0, 7); ctx.fill();
+        ctx.shadowBlur = 0;
     });
 
     Object.values(players).forEach(p => drawStickman(p));
     
-    // Item spawning logic (only if you are the host/first player)
-    if (connections.length > 0 && frame % 300 === 0) {
-        const newItem = { x: Math.random()*canvas.width, y: Math.random()*canvas.height, id: frame };
-        items.push(newItem);
-        connections.forEach(c => c.send({type: 'spawnItem', item: newItem}));
-    }
-
     requestAnimationFrame(updateLoop);
 }
