@@ -1,12 +1,19 @@
-body, html { margin: 0; padding: 0; overflow: hidden; background: #0a0a0c; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-#gameCanvas { display: block; background: #111; cursor: crosshair; }
-#ui {
-    position: absolute; top: 20px; left: 20px;
-    background: rgba(0, 0, 0, 0.8); color: #00ffcc;
-    padding: 20px; border-radius: 10px; z-index: 10;
-    border: 1px solid #00ffcc; box-shadow: 0 0 15px rgba(0, 255, 204, 0.3);
-}
-input { background: #222; border: 1px solid #00ffcc; color: white; padding: 8px; border-radius: 4px; }
-button { background: #00ffcc; color: #000; border: none; padding: 8px 15px; cursor: pointer; font-weight: bold; border-radius: 4px; }
-button:hover { background: #00cca3; }
-#inventory { margin-top: 15px; color: #ff00ff; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; }
+:root { --neon: #00f2ff; --damage: #ff0044; }
+body, html { margin: 0; padding: 0; overflow: hidden; background: #050505; font-family: 'Segoe UI', sans-serif; color: white; }
+#gameCanvas { display: block; }
+
+#overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.9); display: flex; align-items: center; justify-content: center; z-index: 100; }
+#login-card { background: #111; padding: 40px; border: 2px solid var(--neon); box-shadow: 0 0 20px var(--neon); text-align: center; }
+
+#game-ui { pointer-events: none; position: absolute; inset: 0; padding: 20px; z-index: 10; }
+#game-ui * { pointer-events: auto; }
+
+#leaderboard { position: absolute; top: 20px; right: 20px; background: rgba(0,0,0,0.7); padding: 10px; border-left: 3px solid var(--neon); min-width: 150px; }
+#killfeed { position: absolute; bottom: 100px; left: 20px; font-size: 14px; color: var(--damage); }
+
+.stat-bar { width: 200px; height: 10px; background: #333; border: 1px solid #555; margin-bottom: 5px; }
+#hp-fill { height: 100%; width: 100%; background: var(--neon); transition: width 0.2s; }
+
+#network-info { position: absolute; bottom: 20px; right: 20px; background: rgba(0,0,0,0.8); padding: 10px; font-size: 12px; }
+input { background: #000; border: 1px solid #444; color: var(--neon); padding: 5px; outline: none; }
+button { background: var(--neon); border: none; padding: 5px 15px; cursor: pointer; font-weight: bold; }
