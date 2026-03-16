@@ -9,16 +9,19 @@
 </head>
 <body>
     <div id="ui">
-        <div id="status">Connecting to network...</div>
-        <div id="controls">
-            <input type="text" id="joinId" placeholder="Friend's ID">
-            <button onclick="joinGame()">Join Friend</button>
+        <div id="setup">
+            <input type="text" id="username" placeholder="Username" maxlength="10">
+            <button onclick="startApp()">Start</button>
         </div>
-        <div id="my-id-display">Your ID: <span id="my-id">...</span></div>
+        <div id="multiplayer" style="display:none;">
+            <div id="status">Online</div>
+            <input type="text" id="joinId" placeholder="Friend's ID">
+            <button onclick="joinGame()">Join</button>
+            <div id="my-id-display">ID: <span id="my-id">...</span></div>
+        </div>
+        <div id="inventory">Items: <span id="item-list">None</span></div>
     </div>
-    
     <canvas id="gameCanvas"></canvas>
-
     <script src="game.js"></script>
 </body>
 </html>
