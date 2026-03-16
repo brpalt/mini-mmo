@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mini MMO - Stick Figure Strike</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+</head>
+<body>
+    <div id="ui">
+        <div id="status">Connecting to network...</div>
+        <div id="controls">
+            <input type="text" id="joinId" placeholder="Friend's ID">
+            <button onclick="joinGame()">Join Friend</button>
+        </div>
+        <div id="my-id-display">Your ID: <span id="my-id">...</span></div>
+    </div>
+    
+    <canvas id="gameCanvas"></canvas>
+
+    <script src="game.js"></script>
+</body>
+</html>
