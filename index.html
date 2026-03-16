@@ -2,55 +2,75 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>My Bot API Docs</title>
+    <title>GilbertAPI | Control Panel</title>
     <style>
-        body { font-family: sans-serif; background: #2c2f33; color: white; padding: 40px; }
-        .card { background: #23272a; padding: 20px; border-radius: 8px; border: 1px solid #7289da; }
-        select, pre { width: 100%; padding: 10px; margin-top: 10px; border-radius: 4px; }
-        pre { background: #000; color: #0f0; overflow-x: auto; }
-        label { font-weight: bold; color: #7289da; }
+        :root { --discord-blue: #5865F2; --dark-bg: #232428; --card-bg: #2b2d31; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--dark-bg); color: #dbdee1; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .card { background: var(--card-bg); padding: 20px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #3f4147; }
+        input, select { background: #1e1f22; border: 1px solid #1e1f22; color: white; padding: 10px; border-radius: 4px; width: 100%; margin-top: 5px; }
+        .code-block { background: #000; color: #a3ffb4; padding: 15px; border-radius: 5px; position: relative; font-family: monospace; }
+        .method { font-weight: bold; color: #f29033; }
+        label { font-size: 0.9rem; color: #b5bac1; text-transform: uppercase; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 15px; }
     </style>
 </head>
 <body>
-    <h1>🛰️ Bot API Control Center</h1>
-    <div class="card">
-        <label for="apiSelect">Select API Endpoint to Inspect:</label>
-        <select id="apiSelect" onchange="updateDocs()">
-            <option value="start">POST /api/giveaway/start</option>
-            <option value="enter">POST /api/giveaway/enter</option>
-            <option value="view">GET /api/giveaway/:id</option>
-        </select>
+    <div class="container">
+        <h1>🛰️ GilbertAPI Builder</h1>
+        
+        <div class="card">
+            <h3>1. Configure Giveaway</h3>
+            <div class="grid">
+                <div>
+                    <label>Duration (Hours)</label>
+                    <input type="number" id="opt_dur" value="24" oninput="updateBuilder()">
+                </div>
+                <div>
+                    <label>Amount of Winners</label>
+                    <input type="number" id="opt_win" value="1" oninput="updateBuilder()">
+                </div>
+            </div>
+            <div style="margin-top:15px;">
+                <label>Prize Name</label>
+                <input type="text" id="opt_prize" value="Discord Nitro" oninput="updateBuilder()">
+            </div>
+        </div>
 
-        <div id="details">
-            <h3>What the Bot should send:</h3>
-            <pre id="jsonExample"></pre>
-            <h3>What it does:</h3>
-            <p id="description"></p>
+        <div class="card">
+            <h3>2. Bot Implementation Info</h3>
+            <p>Use these details in your bot script:</p>
+            
+            <label>Endpoint URL</label>
+            <div class="code-block">http://your-ip-or-domain/gilbertapi/start</div>
+            
+            <br>
+            <label>Request Method</label>
+            <div class="code-block" style="color: #f29033;">POST</div>
+
+            <br>
+            <label>JSON Payload (What to send)</label>
+            <pre class="code-block" id="json_output"></pre>
         </div>
     </div>
 
     <script>
-        const docs = {
-            start: {
-                desc: "Tells the API to create a new giveaway unique to a server.",
-                json: { serverId: "12345", duration: 5, winnersCount: 1, prize: "Nitro" }
-            },
-            enter: {
-                desc: "Adds a username to the entrants list for a specific ID.",
-                json: { giveawayId: "uuid-goes-here", username: "Wumpus#0001" }
-            },
-            view: {
-                desc: "Returns the full list of entrants and time remaining.",
-                json: "No body required. Just use the URL."
-            }
-        };
+        function updateBuilder() {
+            const dur = document.getElementById('opt_dur').value;
+            const win = document.getElementById('opt_win').value;
+            const prize = document.getElementById('opt_prize').value;
 
-        function updateDocs() {
-            const val = document.getElementById('apiSelect').value;
-            document.getElementById('jsonExample').textContent = JSON.stringify(docs[val].json, null, 4);
-            document.getElementById('description').textContent = docs[val].desc;
+            const payload = {
+                serverId: "INTERACTION_GUILD_ID",
+                duration: parseInt(dur),
+                winners: parseInt(win),
+                prize: prize,
+                timestamp: Date.now()
+            };
+
+            document.getElementById('json_output').textContent = JSON.stringify(payload, null, 4);
         }
-        updateDocs();
+        updateBuilder();
     </script>
 </body>
 </html>
