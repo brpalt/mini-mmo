@@ -2,234 +2,55 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>TITAN SLAYER: FINAL SPEC</title>
+    <title>My Bot API Docs</title>
     <style>
-        body { margin: 0; background: #050505; overflow: hidden; font-family: 'Arial', sans-serif; }
-        canvas { display: block; }
-        #ui {
-            position: absolute; top: 20px; left: 20px; color: #fff;
-            text-shadow: 2px 2px #000; pointer-events: none;
-        }
-        #crosshair {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            width: 10px; height: 10px; border: 2px solid #0ff; border-radius: 50%;
-        }
+        body { font-family: sans-serif; background: #2c2f33; color: white; padding: 40px; }
+        .card { background: #23272a; padding: 20px; border-radius: 8px; border: 1px solid #7289da; }
+        select, pre { width: 100%; padding: 10px; margin-top: 10px; border-radius: 4px; }
+        pre { background: #000; color: #0f0; overflow-x: auto; }
+        label { font-weight: bold; color: #7289da; }
     </style>
 </head>
 <body>
+    <h1>🛰️ Bot API Control Center</h1>
+    <div class="card">
+        <label for="apiSelect">Select API Endpoint to Inspect:</label>
+        <select id="apiSelect" onchange="updateDocs()">
+            <option value="start">POST /api/giveaway/start</option>
+            <option value="enter">POST /api/giveaway/enter</option>
+            <option value="view">GET /api/giveaway/:id</option>
+        </select>
 
-<div id="ui">
-    <div style="font-size: 24px; color: #ff3333; font-weight: bold;">KILLS: <span id="score">0</span></div>
-    <div style="margin-top: 5px; color: #0ff; font-size: 12px;">GAS RESERVE</div>
-    <div style="width:180px; height:8px; background:#222; border: 1px solid #444;">
-        <div id="gas-bar" style="width:100%; height:100%; background:#00ffff; box-shadow: 0 0 15px #0ff;"></div>
+        <div id="details">
+            <h3>What the Bot should send:</h3>
+            <pre id="jsonExample"></pre>
+            <h3>What it does:</h3>
+            <p id="description"></p>
+        </div>
     </div>
-</div>
-<div id="crosshair"></div>
 
-<canvas id="c"></canvas>
-
-<script>
-const canvas = document.getElementById('c');
-const ctx = canvas.getContext('2d');
-
-let w, h, midX, midY;
-let score = 0, gas = 100, swordTimer = 0, gameActive = false;
-
-// Physics Config
-const FOV = 1000;
-let p = { x: 0, y: -600, z: 0, vx: 0, vy: 0, vz: 0, yaw: 0, pitch: 0 };
-let hooks = { o: null, p: null };
-let keys = {};
-let entities = [];
-let speedLines = [];
-
-function resize() {
-    w = canvas.width = window.innerWidth;
-    h = canvas.height = window.innerHeight;
-    midX = w/2; midY = h/2;
-}
-window.addEventListener('resize', resize);
-resize();
-
-// Input Handling
-canvas.addEventListener('mousedown', () => {
-    if(!gameActive) { canvas.requestPointerLock(); gameActive = true; }
-    else { swordTimer = 15; }
-});
-window.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
-window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
-
-window.addEventListener('mousemove', e => {
-    if (document.pointerLockElement === canvas) {
-        // YAW FIXED: Mouse Right = Look Right (Standard FPS)
-        p.yaw += e.movementX * 0.003; 
-        p.pitch -= e.movementY * 0.003;
-        p.pitch = Math.max(-1.4, Math.min(1.4, p.pitch));
-    }
-});
-
-function createEntity() {
-    const isTitan = Math.random() > 0.88;
-    return {
-        type: isTitan ? 'titan' : 'tree',
-        x: p.x + (Math.random() - 0.5) * 20000,
-        z: p.z + (Math.random() - 0.5) * 20000,
-        h: isTitan ? 600 + Math.random()*400 : 1600 + Math.random()*1200,
-        w: isTitan ? 120 : 60,
-        alive: true,
-        id: Math.random()
-    };
-}
-
-function project(x, y, z) {
-    let dx = x - p.x, dy = y - p.y, dz = z - p.z;
-    let cy = Math.cos(p.yaw), sy = Math.sin(p.yaw);
-    let cp = Math.cos(p.pitch), sp = Math.sin(p.pitch);
-    
-    // Transform to Camera Space
-    let x1 = dx * cy + dz * sy;
-    let z1 = dz * cy - dx * sy;
-    let y1 = dy * cp - z1 * sp;
-    let z2 = dy * sp + z1 * cp;
-
-    if (z2 < 50) return null;
-    let s = FOV / z2;
-    return { x: midX + x1 * s, y: midY + y1 * s, s: s, depth: z2 };
-}
-
-function findTarget(excludeID = null) {
-    let best = null, minDist = 250;
-    entities.forEach(e => {
-        if (excludeID && e.id === excludeID && !keys['shift']) return;
-        let pt = project(e.x, -e.h * 0.75, e.z);
-        if (pt) {
-            let d = Math.sqrt((pt.x - midX)**2 + (pt.y - midY)**2);
-            if (d < minDist) {
-                minDist = d;
-                best = { x: e.x, y: -e.h * 0.75, z: e.z, id: e.id };
+    <script>
+        const docs = {
+            start: {
+                desc: "Tells the API to create a new giveaway unique to a server.",
+                json: { serverId: "12345", duration: 5, winnersCount: 1, prize: "Nitro" }
+            },
+            enter: {
+                desc: "Adds a username to the entrants list for a specific ID.",
+                json: { giveawayId: "uuid-goes-here", username: "Wumpus#0001" }
+            },
+            view: {
+                desc: "Returns the full list of entrants and time remaining.",
+                json: "No body required. Just use the URL."
             }
+        };
+
+        function updateDocs() {
+            const val = document.getElementById('apiSelect').value;
+            document.getElementById('jsonExample').textContent = JSON.stringify(docs[val].json, null, 4);
+            document.getElementById('description').textContent = docs[val].desc;
         }
-    });
-    return best;
-}
-
-function update() {
-    if(!gameActive) return;
-
-    while(entities.length < 150) entities.push(createEntity());
-    entities = entities.filter(e => Math.sqrt((e.x-p.x)**2 + (e.z-p.z)**2) < 14000);
-
-    // Grapple Logic
-    if (keys['o']) { if (!hooks.o) hooks.o = findTarget(hooks.p ? hooks.p.id : null); } else hooks.o = null;
-    if (keys['p']) { if (!hooks.p) hooks.p = findTarget(hooks.o ? hooks.o.id : null); } else hooks.p = null;
-
-    [hooks.o, hooks.p].forEach(h => {
-        if (h) {
-            let dx = h.x - p.x, dy = h.y - p.y, dz = h.z - p.z;
-            let d = Math.sqrt(dx*dx + dy*dy + dz*dz);
-            p.vx += (dx/d) * 1.1; p.vy += (dy/d) * 1.1; p.vz += (dz/d) * 1.1;
-        }
-    });
-
-    if (keys[' '] && gas > 0) {
-        p.vx += Math.sin(p.yaw) * 0.8;
-        p.vz += Math.cos(p.yaw) * 0.8;
-        p.vy -= 0.6; gas -= 0.5;
-    } else gas = Math.min(100, gas + 0.15);
-
-    p.vy += 0.25; p.vx *= 0.98; p.vy *= 0.98; p.vz *= 0.98;
-    p.x += p.vx; p.y += p.vy; p.z += p.vz;
-    if(p.y > 0) { p.y = 0; p.vy = 0; }
-    if(swordTimer > 0) swordTimer--;
-
-    // Speed Lines
-    let currentVel = Math.sqrt(p.vx*p.vx + p.vy*p.vy + p.vz*p.vz);
-    if(currentVel > 25 && Math.random() > 0.5) {
-        speedLines.push({ x: Math.random()*w, y: Math.random()*h, l: 20 + Math.random()*40, life: 10 });
-    }
-    speedLines = speedLines.filter(l => l.life-- > 0);
-
-    entities.forEach(e => {
-        if(e.type === 'titan' && e.alive) {
-            let dx = e.x - p.x, dy = (-e.h*0.9)-p.y, dz = e.z - p.z;
-            let dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
-            if(dist < 220 && swordTimer > 0) {
-                e.alive = false; score++;
-                document.getElementById('score').innerText = score;
-            }
-        }
-    });
-    document.getElementById('gas-bar').style.width = gas + "%";
-}
-
-function draw() {
-    ctx.fillStyle = '#0a0d14'; ctx.fillRect(0,0,w,h);
-    
-    // Stable Perspective Ground
-    // We draw a large rectangle based on the horizon line calculated from pitch
-    const horizon = midY + p.pitch * FOV;
-    ctx.fillStyle = '#1b331b';
-    ctx.fillRect(0, horizon, w, h - horizon);
-
-    // Depth Sorting
-    let drawList = entities.map(e => ({...e, proj: project(e.x, 0, e.z)})).filter(e => e.proj)
-                   .sort((a,b) => b.proj.depth - a.proj.depth);
-
-    drawList.forEach(e => {
-        const {x, y, s} = e.proj;
-        if(e.type === 'tree') {
-            ctx.fillStyle = '#2d1b0d'; ctx.fillRect(x - 20*s, y - e.h*s, 40*s, e.h*s);
-            ctx.fillStyle = '#144014'; ctx.beginPath(); ctx.arc(x, y - e.h*s, 130*s, 0, 7); ctx.fill();
-        } else if(e.type === 'titan') {
-            if(!e.alive) ctx.globalAlpha = 0.2;
-            ctx.fillStyle = '#e5c0a0'; 
-            ctx.fillRect(x - 60*s, y - e.h*s, 120*s, e.h*s); 
-            ctx.beginPath(); ctx.arc(x, y - e.h*s - 40*s, 50*s, 0, 7); ctx.fill(); 
-            ctx.fillStyle = '#f00'; ctx.fillRect(x - 20*s, y - e.h*s*0.96, 40*s, 25*s); 
-            ctx.globalAlpha = 1;
-        }
-    });
-
-    // Speed Lines FX
-    ctx.strokeStyle = 'rgba(255,255,255,0.4)';
-    ctx.lineWidth = 2;
-    speedLines.forEach(l => {
-        ctx.beginPath(); ctx.moveTo(l.x, l.y); ctx.lineTo(l.x + (p.vx*l.l*0.1), l.y + (p.vy*l.l*0.1)); ctx.stroke();
-    });
-
-    // Target Indicator
-    let t = findTarget();
-    if(t) {
-        let tp = project(t.x, t.y, t.z);
-        if(tp) {
-            ctx.strokeStyle = '#0ff'; ctx.lineWidth = 1;
-            ctx.beginPath(); ctx.arc(tp.x, tp.y, 12, 0, 7); ctx.stroke();
-        }
-    }
-
-    // Grapple Lines
-    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.2;
-    if(hooks.o) {
-        let hp = project(hooks.o.x, hooks.o.y, hooks.o.z);
-        if(hp) { ctx.beginPath(); ctx.moveTo(w*0.1, h); ctx.lineTo(hp.x, hp.y); ctx.stroke(); }
-    }
-    if(hooks.p) {
-        let hp = project(hooks.p.x, hooks.p.y, hooks.p.z);
-        if(hp) { ctx.beginPath(); ctx.moveTo(w*0.9, h); ctx.lineTo(hp.x, hp.y); ctx.stroke(); }
-    }
-
-    // Blade FX
-    if(swordTimer > 0) {
-        ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 8;
-        ctx.beginPath(); ctx.arc(midX, midY, 180, 0, 1.2); ctx.stroke();
-    }
-
-    update();
-    requestAnimationFrame(draw);
-}
-
-draw();
-</script>
+        updateDocs();
+    </script>
 </body>
 </html>
