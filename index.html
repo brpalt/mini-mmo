@@ -2,192 +2,240 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NEON TRENCH RUNNER</title>
+    <title>VOID RUNNER: EXTREME</title>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', Courier, monospace; }
-        canvas { display: block; }
-        #ui {
-            position: absolute; top: 20px; left: 20px; color: #0ff;
-            text-shadow: 0 0 10px #0ff; pointer-events: none;
+        body { margin: 0; background: #000; overflow: hidden; color: #fff; font-family: 'Segoe UI', sans-serif; cursor: crosshair; }
+        canvas { display: block; filter: contrast(1.2) saturate(1.2); }
+        #overlay {
+            position: absolute; inset: 0; pointer-events: none;
+            display: flex; flex-direction: column; justify-content: space-between; padding: 30px;
+            background: radial-gradient(circle, transparent 40%, rgba(0,20,40,0.4) 100%);
         }
+        .stats { font-family: 'Courier New', monospace; font-size: 1.2rem; color: #0f0; text-shadow: 0 0 10px #0f0; }
+        #shield-bar { width: 200px; height: 10px; border: 1px solid #0ff; margin-top: 10px; }
+        #shield-fill { width: 100%; height: 100%; background: #0ff; transition: width 0.3s; }
         #msg {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            color: #f0f; text-align: center; display: none;
+            text-align: center; display: none; pointer-events: auto;
         }
-        .glitch { font-size: 3rem; font-weight: bold; animation: glitch 1s infinite; }
-        @keyframes glitch {
-            0% { transform: skew(0deg); }
-            20% { transform: skew(10deg); color: #0ff; }
-            40% { transform: skew(-10deg); color: #f0f; }
-            100% { transform: skew(0deg); }
+        .btn { 
+            background: #0ff; color: #000; padding: 10px 20px; border: none; 
+            cursor: pointer; font-weight: bold; margin-top: 20px;
         }
     </style>
 </head>
 <body>
 
-<div id="ui">
-    <div>DISTANCE: <span id="dist">0</span>m</div>
-    <div>SPEED: <span id="speed">0</span>km/h</div>
+<div id="overlay">
+    <div class="stats">
+        <div>SYS_LOG: NEURAL_LINK_ACTIVE</div>
+        <div>DIST: <span id="dist">0</span>m</div>
+        <div>SHIELD:</div>
+        <div id="shield-bar"><div id="shield-fill"></div></div>
+    </div>
+    <div style="text-align: right; color: #f0f;">STATUS: HYPER_DRIVE_READY</div>
 </div>
 
-<div id="msg">
-    <div class="glitch">SYSTEM CRASH</div>
-    <p>PRESS 'R' TO REBOOT PILOT</p>
+<div id="msg" id="deathScreen">
+    <h1 style="font-size: 4rem; margin: 0; color: #f00;">HULL BREACH</h1>
+    <p>CRITICAL SYSTEM FAILURE - PILOT LOST</p>
+    <button class="btn" onclick="location.reload()">REBOOT SYSTEM</button>
 </div>
 
-<canvas id="gameCanvas"></canvas>
+<canvas id="c"></canvas>
 
 <script>
-/**
- * ENGINE CONFIGURATION
- */
-const canvas = document.getElementById('gameCanvas');
+const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
+const shieldFill = document.getElementById('shield-fill');
 const distEl = document.getElementById('dist');
-const speedEl = document.getElementById('speed');
-const msgEl = document.getElementById('msg');
 
-let width, height;
-let gameActive = true;
-let speed = 15;
+let w, h, midX, midY;
+let gameActive = false;
 let distance = 0;
-let player = { x: 0, y: 0, targetX: 0, targetY: 0 };
-let obstacles = [];
-let particles = [];
+let shield = 100;
+let time = 0;
 
-// Initialize Canvas
+// Ship Physics
+let pX = 0, pY = 0; // Screen space -1 to 1
+let vX = 0, vY = 0;
+
+// Entities
+let obstacles = [];
+let stars = Array.from({length: 200}, () => ({ x: Math.random()-0.5, y: Math.random()-0.5, z: Math.random()*1000 }));
+let powerups = [];
+
 function resize() {
-    width = canvas.width = window.innerWidth;
-    height = canvas.height = window.innerHeight;
+    w = canvas.width = window.innerWidth;
+    h = canvas.height = window.innerHeight;
+    midX = w / 2; midY = h / 2;
 }
 window.addEventListener('resize', resize);
 resize();
 
-// Input Handling
+// 1. Mouse Locking
+canvas.addEventListener('click', () => {
+    canvas.requestPointerLock();
+    gameActive = true;
+});
+
 window.addEventListener('mousemove', (e) => {
-    player.targetX = (e.clientX - width / 2) / (width / 2);
-    player.targetY = (e.clientY - height / 2) / (height / 2);
+    if (document.pointerLockElement === canvas) {
+        vX += e.movementX * 0.0005;
+        vY += e.movementY * 0.0005;
+    }
 });
 
-window.addEventListener('keydown', (e) => {
-    if (e.key.toLowerCase() === 'r' && !gameActive) resetGame();
-});
-
-/**
- * GAME LOGIC
- */
-function spawnObstacle() {
-    obstacles.push({
-        z: 1000, // Distance from player
-        x: (Math.random() - 0.5) * 2,
-        y: (Math.random() - 0.5) * 2,
-        size: 50 + Math.random() * 100,
-        color: `hsl(${Math.random() * 360}, 100%, 50%)`
-    });
+function createAsteroid() {
+    return {
+        z: 2000,
+        x: (Math.random() - 0.5) * 8,
+        y: (Math.random() - 0.5) * 8,
+        size: 40 + Math.random() * 100,
+        rot: Math.random() * Math.PI * 2,
+        rotV: (Math.random() - 0.5) * 0.1,
+        seed: Math.random() * 100 // For procedural shape
+    };
 }
 
-function resetGame() {
-    obstacles = [];
-    particles = [];
-    distance = 0;
-    speed = 15;
-    gameActive = true;
-    msgEl.style.display = 'none';
-    loop();
+function createPowerup() {
+    return { z: 2000, x: (Math.random()-0.5)*4, y: (Math.random()-0.5)*4, type: 'shield' };
+}
+
+function drawAsteroid(x, y, size, rot, seed) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(rot);
+    ctx.beginPath();
+    for(let i=0; i<8; i++) {
+        let r = size * (0.8 + Math.sin(seed + i) * 0.3);
+        let ang = (i / 8) * Math.PI * 2;
+        ctx.lineTo(Math.cos(ang) * r, Math.sin(ang) * r);
+    }
+    ctx.closePath();
+    
+    // Rock texture gradient
+    let grad = ctx.createRadialGradient(-size/3, -size/3, 0, 0, 0, size);
+    grad.addColorStop(0, '#888');
+    grad.addColorStop(1, '#222');
+    ctx.fillStyle = grad;
+    ctx.fill();
+    ctx.strokeStyle = '#444';
+    ctx.stroke();
+    ctx.restore();
 }
 
 function update() {
     if (!gameActive) return;
 
-    distance += Math.floor(speed / 10);
-    speed += 0.005; // Constant acceleration
+    time += 0.01;
+    distance += 1;
+    
+    // Friction & Movement
+    pX += vX; pY += vY;
+    vX *= 0.95; vY *= 0.95;
 
-    // Smooth ship movement
-    player.x += (player.targetX - player.x) * 0.1;
-    player.y += (player.targetY - player.y) * 0.1;
+    // Keep ship in bounds
+    pX = Math.max(-1.5, Math.min(1.5, pX));
+    pY = Math.max(-1, Math.min(1, pY));
 
-    // Update UI
-    distEl.innerText = distance;
-    speedEl.innerText = Math.floor(speed * 10);
+    // Spawning
+    if (Math.random() < 0.08) obstacles.push(createAsteroid());
+    if (Math.random() < 0.01) powerups.push(createPowerup());
 
-    // Spawn obstacles
-    if (Math.random() < 0.1) spawnObstacle();
-
-    // Move obstacles
-    for (let i = obstacles.length - 1; i >= 0; i--) {
-        let o = obstacles[i];
-        o.z -= speed;
-
-        // Collision detection (if z is close to 0)
-        if (o.z < 50 && o.z > -50) {
-            let dx = o.x - player.x;
-            let dy = o.y - player.y;
-            let hitRange = 0.15; // Hitbox sensitivity
-            if (Math.abs(dx) < hitRange && Math.abs(dy) < hitRange) {
-                gameActive = false;
-                msgEl.style.display = 'block';
+    // Update Obstacles
+    obstacles.forEach((o, i) => {
+        o.z -= 25;
+        o.rot += o.rotV;
+        
+        // Collision
+        if (o.z < 100 && o.z > 0) {
+            let dx = (o.x - pX);
+            let dy = (o.y - pY);
+            if (Math.sqrt(dx*dx + dy*dy) < 0.2) {
+                shield -= 2;
+                o.z = -100; // Destroy on hit
+                if (shield <= 0) {
+                    gameActive = false;
+                    document.getElementById('msg').style.display = 'block';
+                    document.exitPointerLock();
+                }
             }
         }
-
         if (o.z < -100) obstacles.splice(i, 1);
-    }
-}
-
-/**
- * RENDERING ENGINE
- */
-function draw() {
-    // Space Background
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, width, height);
-
-    // Draw Trench lines
-    ctx.strokeStyle = '#222';
-    ctx.lineWidth = 2;
-    for(let i = 0; i < 10; i++) {
-        let z = ((Date.now() / 10) % 100) + (i * 100);
-        let scale = 500 / z;
-        let size = 2000 * scale;
-        ctx.strokeRect(width/2 - size/2, height/2 - size/2, size, size);
-    }
-
-    // Sort obstacles by depth (Painters Algorithm)
-    obstacles.sort((a, b) => b.z - a.z);
-
-    obstacles.forEach(o => {
-        let scale = 600 / o.z;
-        if (scale < 0) return;
-
-        let screenX = (width / 2) + (o.x - player.x) * width * scale;
-        let screenY = (height / 2) + (o.y - player.y) * height * scale;
-        let drawSize = o.size * scale;
-
-        // Draw Glow
-        ctx.shadowBlur = 15;
-        ctx.shadowColor = o.color;
-        ctx.fillStyle = o.color;
-        ctx.fillRect(screenX - drawSize / 2, screenY - drawSize / 2, drawSize, drawSize);
-        ctx.shadowBlur = 0;
     });
 
-    // Draw Crosshair
-    ctx.strokeStyle = '#0ff';
+    // Update Powerups
+    powerups.forEach((p, i) => {
+        p.z -= 20;
+        if (p.z < 100 && p.z > 0) {
+            let dx = (p.x - pX); let dy = (p.y - pY);
+            if (Math.sqrt(dx*dx + dy*dy) < 0.3) {
+                shield = Math.min(100, shield + 30);
+                powerups.splice(i, 1);
+            }
+        }
+    });
+
+    shieldFill.style.width = shield + '%';
+    distEl.innerText = distance;
+}
+
+function draw() {
+    // Cinematic BG
+    let bgGrad = ctx.createRadialGradient(midX, midY, 0, midX, midY, w);
+    bgGrad.addColorStop(0, '#000b1a');
+    bgGrad.addColorStop(1, '#000');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, w, h);
+
+    // Stars
+    ctx.fillStyle = "#fff";
+    stars.forEach(s => {
+        s.z -= 10; if(s.z <= 1) s.z = 1000;
+        let sc = 400/s.z;
+        ctx.fillRect(midX + s.x*w*sc, midY + s.y*h*sc, 2, 2);
+    });
+
+    // Draw Entities
+    [...obstacles, ...powerups].sort((a,b) => b.z - a.z).forEach(e => {
+        let sc = 600 / e.z;
+        if (sc < 0) return;
+        let x = midX + (e.x - pX) * w * sc;
+        let y = midY + (e.y - pY) * h * sc;
+
+        if (e.type === 'shield') {
+            ctx.fillStyle = '#0ff';
+            ctx.shadowBlur = 20; ctx.shadowColor = '#0ff';
+            ctx.beginPath(); ctx.arc(x, y, 15*sc, 0, Math.PI*2); ctx.fill();
+            ctx.shadowBlur = 0;
+        } else {
+            drawAsteroid(x, y, e.size * sc, e.rot, e.seed);
+        }
+    });
+
+    // 3D COCKPIT HUD
+    ctx.strokeStyle = 'rgba(0, 255, 255, 0.3)';
+    ctx.lineWidth = 2;
+    // Glass frame
     ctx.beginPath();
-    ctx.arc(width/2, height/2, 20, 0, Math.PI * 2);
-    ctx.moveTo(width/2 - 30, height/2); ctx.lineTo(width/2 + 30, height/2);
-    ctx.moveTo(width/2, height/2 - 30); ctx.lineTo(width/2, height/2 + 30);
+    ctx.moveTo(0, h); ctx.lineTo(w*0.2, h*0.7); ctx.lineTo(w*0.8, h*0.7); ctx.lineTo(w, h);
     ctx.stroke();
 
-    if (gameActive) requestAnimationFrame(loop);
+    // Flight Assist Crosshair
+    let targetX = midX - (vX * 5000);
+    let targetY = midY - (vY * 5000);
+    ctx.strokeStyle = '#0f0';
+    ctx.beginPath();
+    ctx.arc(targetX, targetY, 10, 0, Math.PI*2);
+    ctx.moveTo(targetX-20, targetY); ctx.lineTo(targetX+20, targetY);
+    ctx.moveTo(targetX, targetY-20); ctx.lineTo(targetX, targetY+20);
+    ctx.stroke();
+
+    requestAnimationFrame(() => { update(); draw(); });
 }
 
-function loop() {
-    update();
-    draw();
-}
-
-loop();
+draw();
 </script>
 </body>
 </html>
