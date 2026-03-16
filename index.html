@@ -2,25 +2,34 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mini MMO - Stick Figure Strike</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>MINI MMO: ULTRA</title>
     <link rel="stylesheet" href="style.css">
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 </head>
 <body>
-    <div id="ui">
-        <div id="setup">
-            <input type="text" id="username" placeholder="Username" maxlength="10">
-            <button onclick="startApp()">Start</button>
+    <div id="overlay">
+        <div id="login-card">
+            <h1>MINI <span style="color: #00f2ff;">MMO</span></h1>
+            <input type="text" id="username" placeholder="ENTER CALLSIGN..." maxlength="12">
+            <button onclick="startApp()">NEURAL LINK</button>
         </div>
-        <div id="multiplayer" style="display:none;">
-            <div id="status">Online</div>
-            <input type="text" id="joinId" placeholder="Friend's ID">
-            <button onclick="joinGame()">Join</button>
-            <div id="my-id-display">ID: <span id="my-id">...</span></div>
-        </div>
-        <div id="inventory">Items: <span id="item-list">None</span></div>
     </div>
+
+    <div id="game-ui" style="display:none;">
+        <div id="leaderboard"><h3>TOP SLAYERS</h3><div id="scores"></div></div>
+        <div id="killfeed"></div>
+        <div id="stats">
+            <div class="stat-bar"><div id="hp-fill"></div></div>
+            <div id="item-slots"></div>
+        </div>
+        <div id="network-info">
+            ID: <span id="my-id">---</span>
+            <input type="text" id="joinId" placeholder="REMOTE ID">
+            <button onclick="joinGame()">CONNECT</button>
+        </div>
+    </div>
+
     <canvas id="gameCanvas"></canvas>
     <script src="game.js"></script>
 </body>
