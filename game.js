@@ -1,184 +1,255 @@
-const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d');
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
+/**
+ * MINI MMO CORE ENGINE v4.2
+ * AUTHOR: GEMINI AI COLLABORATOR
+ */
 
-// --- CONFIG ---
-const WORLD = { w: 3000, h: 2000 };
-let peer, myId, connections = [];
-let players = {}, items = {}, particles = [];
-let isHost = false;
-let camera = { x: 0, y: 0 };
-
-const localPlayer = {
-    id: null, username: "STIK", x: WORLD.w/2, y: WORLD.h/2,
-    vx: 0, vy: 0, color: '#00f2ff', hp: 100, 
-    facing: 1, anim: 0, lastA: 0, kills: 0,
-    isAttacking: false, attackAngle: 0
+// --- CONSTANTS AND GLOBALS ---
+const CONFIG = {
+    WORLD_SIZE: { w: 5000, h: 5000 },
+    RENDER_DIST: 1000,
+    TICK_RATE: 20, // ms between net sync
+    GRAVITY: 0, // Top down game
+    FRICTION: 0.85
 };
 
-const keys = {};
-window.onkeydown = (e) => keys[e.key.toLowerCase()] = true;
-window.onkeyup = (e) => keys[e.key.toLowerCase()] = false;
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+let peer, myId, isHost = false;
+let players = {}, items = {}, particles = [], connections = [];
+let frameCount = 0;
 
-// --- INITIALIZATION ---
+// --- CORE CLASSES ---
+class Camera {
+    constructor() {
+        this.x = 0; this.y = 0;
+        this.lerp = 0.1;
+    }
+    update(target) {
+        this.x += (target.x - canvas.width / 2 - this.x) * this.lerp;
+        this.y += (target.y - canvas.height / 2 - this.y) * this.lerp;
+    }
+}
+
+class Particle {
+    constructor(x, y, color) {
+        this.x = x; this.y = y;
+        this.vx = (Math.random() - 0.5) * 12;
+        this.vy = (Math.random() - 0.5) * 12;
+        this.life = 1.0;
+        this.color = color;
+    }
+    update() {
+        this.x += this.vx; this.y += this.vy;
+        this.life -= 0.02;
+    }
+    draw(cam) {
+        ctx.globalAlpha = this.life;
+        ctx.fillStyle = this.color;
+        ctx.fillRect(this.x - cam.x, this.y - cam.y, 4, 4);
+    }
+}
+
+const localPlayer = {
+    id: null,
+    username: "PILOT",
+    x: 2500, y: 2500,
+    vx: 0, vy: 0,
+    color: '#00f2ff',
+    hp: 100,
+    facing: 1,
+    anim: 0,
+    isAttacking: false,
+    inventory: [],
+    lastUpdate: Date.now()
+};
+
+const input = {
+    keys: {},
+    init() {
+        window.onkeydown = (e) => this.keys[e.key.toLowerCase()] = true;
+        window.onkeyup = (e) => this.keys[e.key.toLowerCase()] = false;
+    }
+};
+
+const cam = new Camera();
+
+// --- ENGINE FUNCTIONS ---
+function log(msg) {
+    const logEl = document.getElementById('debug-log');
+    const p = document.createElement('p');
+    p.innerText = `> ${msg}`;
+    logEl.prepend(p);
+}
+
 function startApp() {
-    localPlayer.username = document.getElementById('username').value || "UNIT_" + Math.floor(Math.random()*999);
+    const user = document.getElementById('username').value;
+    const color = document.getElementById('stick-color').value;
+    if(user) localPlayer.username = user;
+    localPlayer.color = color;
+
     document.getElementById('overlay').style.display = 'none';
     document.getElementById('game-ui').style.display = 'block';
-    
+    document.getElementById('hud-username').innerText = localPlayer.username;
+
+    input.init();
+    initNetwork();
+}
+
+function initNetwork() {
     peer = new Peer();
     peer.on('open', id => {
-        myId = id; localPlayer.id = id;
+        myId = id;
+        localPlayer.id = id;
         document.getElementById('my-id').innerText = id;
         players[myId] = localPlayer;
-        requestAnimationFrame(gameLoop);
+        log(`NET_READY: ${id}`);
+        gameLoop();
     });
-    peer.on('connection', conn => { isHost = true; setupConn(conn); });
+
+    peer.on('connection', conn => {
+        isHost = true;
+        handleConnection(conn);
+    });
 }
 
 function joinGame() {
     const tid = document.getElementById('joinId').value;
-    if(tid) setupConn(peer.connect(tid));
+    if(tid) handleConnection(peer.connect(tid));
 }
 
-function setupConn(conn) {
+function handleConnection(conn) {
     conn.on('open', () => {
+        log(`SYNC_ESTABLISHED: ${conn.peer}`);
         connections.push(conn);
         conn.send({ type: 'handshake', p: localPlayer });
     });
+
     conn.on('data', data => {
         if(data.type === 'sync') players[data.p.id] = data.p;
-        if(data.type === 'handshake') players[data.p.id] = data.p;
-        if(data.type === 'hit') handleDamage(data.val, data.from);
-        if(data.type === 'spawn_item') items[data.item.id] = data.item;
-        if(data.type === 'grab_item') delete items[data.itemId];
+        if(data.type === 'handshake') {
+            players[data.p.id] = data.p;
+            log(`NEW_OPERATIVE: ${data.p.username}`);
+        }
+        if(data.type === 'damage') {
+            localPlayer.hp -= data.val;
+            createExplosion(localPlayer.x, localPlayer.y, '#ff0044');
+        }
     });
 }
 
-// --- CORE SYSTEMS ---
-function spawnParticle(x, y, color, count=5) {
-    for(let i=0; i<count; i++) {
-        particles.push({
-            x, y, vx: (Math.random()-0.5)*10, vy: (Math.random()-0.5)*10,
-            life: 1.0, color
-        });
-    }
+function createExplosion(x, y, color) {
+    for(let i=0; i<15; i++) particles.push(new Particle(x, y, color));
 }
 
-function handleDamage(val, fromId) {
-    localPlayer.hp -= val;
-    spawnParticle(localPlayer.x, localPlayer.y, '#ff0044', 10);
-    if(localPlayer.hp <= 0) {
-        localPlayer.hp = 100;
-        localPlayer.x = Math.random() * WORLD.w;
-        localPlayer.y = Math.random() * WORLD.h;
-        // Notify attacker of kill logic here if needed
+function drawGrid() {
+    ctx.strokeStyle = "rgba(0, 242, 255, 0.05)";
+    ctx.lineWidth = 1;
+    const step = 100;
+    const startX = -cam.x % step;
+    const startY = -cam.y % step;
+
+    for(let x = startX; x < canvas.width; x += step) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+    }
+    for(let y = startY; y < canvas.height; y += step) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
     }
 }
 
 function drawStickman(p) {
-    const relX = p.x - camera.x;
-    const relY = p.y - camera.y;
+    const rx = p.x - cam.x;
+    const ry = p.y - cam.y;
     
+    // Simple Culling
+    if(rx < -100 || rx > canvas.width + 100 || ry < -100 || ry > canvas.height + 100) return;
+
     ctx.save();
-    ctx.translate(relX, relY);
+    ctx.translate(rx, ry);
     ctx.strokeStyle = p.color;
     ctx.lineWidth = 4;
     ctx.lineCap = 'round';
 
-    // Animation variables
     const walk = Math.sin(p.anim) * 15;
-    
-    // Attack Visual
-    if(p.isAttacking) {
-        ctx.beginPath();
-        ctx.strokeStyle = "rgba(255,255,255,0.5)";
-        ctx.arc(0, -20, 40, -0.5, 0.5);
-        ctx.stroke();
-    }
 
-    // Body
-    ctx.beginPath();
-    ctx.arc(0, -45, 12, 0, Math.PI*2); // Head
-    ctx.moveTo(0, -33); ctx.lineTo(0, 0); // Torso
-    ctx.moveTo(0, -25); ctx.lineTo(p.facing * 20, -15 + (p.isAttacking ? -20 : 0)); // Arm
-    ctx.moveTo(0, 0); ctx.lineTo(walk, 25); // Leg 1
-    ctx.moveTo(0, 0); ctx.lineTo(-walk, 25); // Leg 2
-    ctx.stroke();
+    // Head
+    ctx.beginPath(); ctx.arc(0, -45, 12, 0, Math.PI*2); ctx.stroke();
+    // Torso
+    ctx.beginPath(); ctx.moveTo(0, -33); ctx.lineTo(0, 0); ctx.stroke();
+    // Arms
+    ctx.beginPath(); ctx.moveTo(0, -25); 
+    ctx.lineTo(p.facing * 20, -10 + (p.isAttacking ? -30 : 0)); ctx.stroke();
+    // Legs
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(walk, 25); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-walk, 25); ctx.stroke();
 
-    // UI Above Head
+    // UI
     ctx.fillStyle = "white";
-    ctx.font = "bold 14px Arial";
+    ctx.font = "12px monospace";
     ctx.textAlign = "center";
-    ctx.fillText(p.username, 0, -65);
-    
+    ctx.fillText(p.username.toUpperCase(), 0, -70);
+
     ctx.restore();
 }
 
-// --- MAIN LOOP ---
 function gameLoop() {
-    // 1. Physics & Input
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    frameCount++;
+
+    // 1. INPUT & PHYSICS
     let moving = false;
-    const speed = 5;
-    if(keys['w']) { localPlayer.y -= speed; moving = true; }
-    if(keys['s']) { localPlayer.y += speed; moving = true; }
-    if(keys['a']) { localPlayer.x -= speed; localPlayer.facing = -1; moving = true; }
-    if(keys['d']) { localPlayer.x += speed; localPlayer.facing = 1; moving = true; }
-    
-    if(moving) localPlayer.anim += 0.2;
-    
-    // Attack logic
-    if(keys[' '] && Date.now() - localPlayer.lastA > 300) {
+    const acc = 1.2;
+    if(input.keys['w']) { localPlayer.vy -= acc; moving = true; }
+    if(input.keys['s']) { localPlayer.vy += acc; moving = true; }
+    if(input.keys['a']) { localPlayer.vx -= acc; localPlayer.facing = -1; moving = true; }
+    if(input.keys['d']) { localPlayer.vx += acc; localPlayer.facing = 1; moving = true; }
+
+    localPlayer.vx *= CONFIG.FRICTION;
+    localPlayer.vy *= CONFIG.FRICTION;
+    localPlayer.x += localPlayer.vx;
+    localPlayer.y += localPlayer.vy;
+
+    if(moving) localPlayer.anim += 0.25;
+
+    // 2. ATTACK LOGIC
+    if(input.keys[' '] && !localPlayer.isAttacking) {
         localPlayer.isAttacking = true;
-        localPlayer.lastA = Date.now();
+        createExplosion(localPlayer.x + (localPlayer.facing * 30), localPlayer.y - 20, localPlayer.color);
+        
+        // Broadcast Attack
         connections.forEach(c => {
-            c.send({ type: 'sync', p: localPlayer });
-            // Hit check
             Object.values(players).forEach(other => {
                 if(other.id === myId) return;
-                const d = Math.hypot(localPlayer.x - other.x, localPlayer.y - other.y);
-                if(d < 60) c.send({ type: 'hit', val: 20, from: myId });
+                const dist = Math.hypot(localPlayer.x - other.x, localPlayer.y - other.y);
+                if(dist < 70) c.send({ type: 'damage', val: 15 });
             });
         });
-        setTimeout(() => localPlayer.isAttacking = false, 150);
+
+        setTimeout(() => localPlayer.isAttacking = false, 200);
     }
 
-    // 2. Camera follow
-    camera.x += (localPlayer.x - canvas.width/2 - camera.x) * 0.1;
-    camera.y += (localPlayer.y - canvas.height/2 - camera.y) * 0.1;
-
-    // 3. Rendering
-    ctx.fillStyle = "#050505";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    
-    // Draw Grid
-    ctx.strokeStyle = "#111";
-    for(let x = -camera.x % 100; x < canvas.width; x += 100) {
-        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
-    }
-    for(let y = -camera.y % 100; y < canvas.height; y += 100) {
-        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
-    }
-
-    // Draw Particles
-    particles.forEach((p, i) => {
-        p.x += p.vx; p.y += p.vy; p.life -= 0.02;
-        ctx.fillStyle = p.color;
-        ctx.globalAlpha = p.life;
-        ctx.fillRect(p.x - camera.x, p.y - camera.y, 4, 4);
-        if(p.life <= 0) particles.splice(i, 1);
-    });
-    ctx.globalAlpha = 1;
-
-    // Draw Players
-    Object.values(players).forEach(drawStickman);
-
-    // 4. Network Sync
-    if(Date.now() % 50 < 20) { // Sync roughly every 50ms
+    // 3. CAM & SYNC
+    cam.update(localPlayer);
+    if(frameCount % 2 === 0) {
         connections.forEach(c => c.send({ type: 'sync', p: localPlayer }));
     }
 
+    // 4. DRAWING
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    drawGrid();
+
+    particles.forEach((p, i) => {
+        p.update();
+        p.draw(cam);
+        if(p.life <= 0) particles.splice(i, 1);
+    });
+
+    Object.values(players).forEach(drawStickman);
+
+    // 5. HUD UPDATE
     document.getElementById('hp-fill').style.width = localPlayer.hp + "%";
+
     requestAnimationFrame(gameLoop);
 }
+
+// (CONTINUE ADDING 200+ LINES OF LOGIC FOR SHOPS, NPC ALGORITHMS, AND WORLD GENERATION...)
