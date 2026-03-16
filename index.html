@@ -2,38 +2,36 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>TITAN HUNTER: FOREST ODYSSEY</title>
+    <title>TITAN SLAYER: VERTICAL MANEUVER</title>
     <style>
-        body { margin: 0; background: #1a2a1a; overflow: hidden; font-family: 'Verdana', sans-serif; }
-        canvas { display: block; cursor: crosshair; }
-        #hud {
-            position: absolute; top: 20px; left: 20px; color: #fff;
-            text-shadow: 2px 2px #000; pointer-events: none;
+        body { margin: 0; background: #070a07; overflow: hidden; font-family: 'Courier New', monospace; }
+        canvas { display: block; }
+        #ui {
+            position: absolute; inset: 20px; pointer-events: none;
+            display: flex; flex-direction: column; justify-content: space-between;
         }
-        .crosshair {
+        .hud-box { color: #fff; text-shadow: 2px 2px #000; border-left: 4px solid #0ff; padding-left: 10px; }
+        #crosshair {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            width: 20px; height: 20px; border: 2px solid rgba(255,255,255,0.5); border-radius: 50%;
+            width: 30px; height: 30px; border: 1px solid rgba(0,255,255,0.3);
         }
-        #msg {
-            position: absolute; top: 40%; width: 100%; text-align: center;
-            color: white; background: rgba(0,0,0,0.7); padding: 20px 0; display: block;
+        #instructions {
+            position: absolute; bottom: 10%; width: 100%; text-align: center;
+            color: #aaa; font-size: 0.9rem;
         }
     </style>
 </head>
 <body>
 
-<div id="hud">
-    <div style="font-size: 24px;">KILLS: <span id="score">0</span></div>
-    <div>GAS: <div style="width:100px; height:10px; border:1px solid #fff;"><div id="gas-bar" style="width:100%; height:100%; background:#0ff;"></div></div></div>
+<div id="ui">
+    <div class="hud-box">
+        <div style="font-size: 2rem;">KILLS: <span id="score">0</span></div>
+        <div>GAS: <div style="width:150px; height:8px; background:#222;"><div id="gas-fill" style="width:100%; height:100%; background:#0ff;"></div></div></div>
+    </div>
 </div>
 
-<div id="msg">
-    <h1>SCOUT REGIMENT TRAINING</h1>
-    <p>CLICK TO BEGIN</p>
-    <p>LEFT/RIGHT CLICK TO GRAPPLE TREES | SPACE TO BOOST | AIM FOR THE RED NECKS</p>
-</div>
-
-<div class="crosshair"></div>
+<div id="crosshair"></div>
+<div id="instructions">CLICK TO LOCK MOUSE | O & P TO GRAPPLE | LEFT CLICK TO SLASH</div>
 
 <canvas id="c"></canvas>
 
@@ -42,222 +40,183 @@ const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
 
 let w, h, midX, midY;
+let score = 0, gas = 100, swordTimer = 0;
 let gameActive = false;
-let score = 0;
-let gas = 100;
 
-// Physics Constants
-const GRAVITY = 0.15;
-const FRICTION = 0.98;
-const GRAPPLE_STRENGTH = 0.04;
+// Physics Config
+const GRAVITY = 0.2;
+const ROPE_LENGTH = 1200;
+const TENSION = 0.8;
 
-// Player State
-let p = { x: 0, y: -500, z: 0, vx: 0, vy: 0, vz: 0, yaw: 0, pitch: 0 };
-let leftAnchor = null, rightAnchor = null;
+// Player
+let p = { x: 0, y: -400, z: 0, vx: 0, vy: 0, vz: 0, yaw: 0, pitch: 0 };
+let hooks = { o: null, p: null };
+let keys = {};
 
-// Entities
-let trees = [];
-let titans = [];
-
-function init() {
-    w = canvas.width = window.innerWidth;
-    h = canvas.height = window.innerHeight;
-    midX = w/2; midY = h/2;
-    
-    // Generate Forest
-    for(let i=0; i<60; i++) {
-        trees.push({
-            x: (Math.random()-0.5) * 10000,
-            z: (Math.random()-0.5) * 10000,
-            w: 40 + Math.random()*60,
-            h: 800 + Math.random()*1000
-        });
-    }
-    spawnTitans();
+// World
+let trees = [], titans = [];
+for(let i=0; i<80; i++) {
+    trees.push({ x: (Math.random()-0.5)*15000, z: (Math.random()-0.5)*15000, r: 30+Math.random()*40, h: 1000+Math.random()*1000 });
 }
 
 function spawnTitans() {
-    for(let i=0; i<10; i++) {
-        titans.push({
-            x: (Math.random()-0.5) * 8000,
-            z: (Math.random()-0.5) * 8000,
-            size: 200 + Math.random()*300,
-            alive: true
-        });
+    for(let i=0; i<15; i++) {
+        titans.push({ x: (Math.random()-0.5)*12000, z: (Math.random()-0.5)*12000, h: 400+Math.random()*400, alive: true });
     }
 }
+spawnTitans();
 
-window.addEventListener('resize', init);
-canvas.addEventListener('mousedown', (e) => {
-    if(!gameActive) {
-        canvas.requestPointerLock();
-        gameActive = true;
-        document.getElementById('msg').style.display = 'none';
-        return;
-    }
-    // Find closest tree in look direction for grappling
-    let anchor = findGrapplePoint();
-    if(e.button === 0) leftAnchor = anchor;
-    if(e.button === 2) rightAnchor = anchor;
+function resize() {
+    w = canvas.width = window.innerWidth;
+    h = canvas.height = window.innerHeight;
+    midX = w/2; midY = h/2;
+}
+window.addEventListener('resize', resize);
+resize();
+
+canvas.addEventListener('click', () => {
+    canvas.requestPointerLock();
+    gameActive = true;
+    if(gameActive) swordTimer = 10; // Trigger sword slash
 });
 
-window.addEventListener('mouseup', (e) => {
-    if(e.button === 0) leftAnchor = null;
-    if(e.button === 2) rightAnchor = null;
-});
-
-window.addEventListener('contextmenu', e => e.preventDefault());
-
-window.addEventListener('mousemove', (e) => {
+window.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
+window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+window.addEventListener('mousemove', e => {
     if (document.pointerLockElement === canvas) {
         p.yaw += e.movementX * 0.003;
-        p.pitch -= e.movementY * 0.003;
-        p.pitch = Math.max(-Math.PI/2, Math.min(Math.PI/2, p.pitch));
+        p.pitch -= e.movementY * 0.002;
+        p.pitch = Math.max(-1.5, Math.min(1.5, p.pitch));
     }
 });
 
-let keys = {};
-window.addEventListener('keydown', e => keys[e.code] = true);
-window.addEventListener('keyup', e => keys[e.code] = false);
-
-function findGrapplePoint() {
-    // Simplified: Hook onto the nearest tree in front of you
-    let best = null;
-    let minDist = 3000;
+function findAnchor() {
+    let best = null, minDist = 2500;
     trees.forEach(t => {
-        let dx = t.x - p.x;
-        let dz = t.z - p.z;
+        let dx = t.x - p.x, dz = t.z - p.z;
         let dist = Math.sqrt(dx*dx + dz*dz);
+        // Simplified check: Hook trees near where we look
         if(dist < minDist) {
             minDist = dist;
-            best = { x: t.x, y: -t.h * 0.8, z: t.z };
+            best = { x: t.x, y: -t.h * 0.9, z: t.z, dist: dist };
         }
     });
     return best;
 }
 
-function update() {
+function updatePhysics() {
     if(!gameActive) return;
 
-    // Grapple Physics
-    [leftAnchor, rightAnchor].forEach(a => {
-        if(a) {
-            p.vx += (a.x - p.x) * GRAPPLE_STRENGTH;
-            p.vy += (a.y - p.y) * GRAPPLE_STRENGTH;
-            p.vz += (a.z - p.z) * GRAPPLE_STRENGTH;
-        }
+    // Grapple Tension Math
+    ['o', 'p'].forEach(key => {
+        if(keys[key]) {
+            if(!hooks[key]) hooks[key] = findAnchor();
+            if(hooks[key]) {
+                let a = hooks[key];
+                let dx = a.x - p.x, dy = a.y - p.y, dz = a.z - p.z;
+                let d = Math.sqrt(dx*dx + dy*dy + dz*dz);
+                
+                // Pull force
+                let pull = (d - 100) * 0.005; 
+                p.vx += (dx/d) * pull;
+                p.vy += (dy/d) * pull;
+                p.vz += (dz/d) * pull;
+            }
+        } else { hooks[key] = null; }
     });
 
-    // Gas Boost
-    if(keys['Space'] && gas > 0) {
-        p.vx += Math.sin(p.yaw) * 0.5;
-        p.vz += Math.cos(p.yaw) * 0.5;
-        p.vy -= 0.6;
-        gas -= 0.5;
-    } else {
-        gas = Math.min(100, gas + 0.1);
-    }
+    if(keys[' ' ] && gas > 0) {
+        p.vx += Math.sin(p.yaw) * 0.6;
+        p.vz += Math.cos(p.yaw) * 0.6;
+        p.vy -= 0.4; gas -= 0.3;
+    } else { gas = Math.min(100, gas + 0.1); }
 
     p.vy += GRAVITY;
-    p.vx *= FRICTION; p.vy *= FRICTION; p.vz *= FRICTION;
+    p.vx *= 0.98; p.vy *= 0.98; p.vz *= 0.98;
     p.x += p.vx; p.y += p.vy; p.z += p.vz;
 
-    // Ground collision
     if(p.y > 0) { p.y = 0; p.vy = 0; }
+    if(swordTimer > 0) swordTimer--;
 
-    // Titan Kill Check
+    // Combat
     titans.forEach(t => {
         if(!t.alive) return;
-        let dx = t.x - p.x;
-        let dy = (-t.size*0.9) - p.y;
-        let dz = t.z - p.z;
+        let dx = t.x - p.x, dy = (-t.h * 0.9) - p.y, dz = t.z - p.z;
         let dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
-        if(dist < 100) { // Hit weak spot
-            t.alive = false;
-            score++;
+        if(dist < 150 && swordTimer > 0) {
+            t.alive = false; score++;
             document.getElementById('score').innerText = score;
         }
     });
-
-    document.getElementById('gas-bar').style.width = gas + '%';
+    document.getElementById('gas-fill').style.width = gas + '%';
 }
 
 function project(x, y, z) {
-    // 3D to 2D Translation
-    let dx = x - p.x;
-    let dy = y - p.y;
-    let dz = z - p.z;
-
-    // Rotate around Y (Yaw)
+    let dx = x - p.x, dy = y - p.y, dz = z - p.z;
     let rx = dx * Math.cos(-p.yaw) - dz * Math.sin(-p.yaw);
     let rz = dx * Math.sin(-p.yaw) + dz * Math.cos(-p.yaw);
-    
-    // Rotate around X (Pitch)
     let ry = dy * Math.cos(-p.pitch) - rz * Math.sin(-p.pitch);
     let fz = dy * Math.sin(-p.pitch) + rz * Math.cos(-p.pitch);
-
-    if(fz < 10) return null;
-    let s = 800 / fz;
-    return { x: midX + rx * s, y: midY + ry * s, scale: s };
+    if(fz < 50) return null;
+    let s = 1000 / fz;
+    return { x: midX + rx * s, y: midY + ry * s, s: s };
 }
 
 function draw() {
-    ctx.fillStyle = '#1a2a1a';
-    ctx.fillRect(0,0,w,h);
+    // Atmosphere
+    let sky = ctx.createLinearGradient(0, 0, 0, h);
+    sky.addColorStop(0, '#1a202c'); sky.addColorStop(1, '#2d3748');
+    ctx.fillStyle = sky; ctx.fillRect(0,0,w,h);
 
-    // Draw Ground
-    ctx.fillStyle = '#2d4d2d';
-    ctx.fillRect(0, h/2 + p.pitch*500, w, h);
+    // Sort objects by depth
+    let scene = [...trees.map(t=>({...t, type:'tree'})), ...titans.map(t=>({...t, type:'titan'}))];
+    scene.sort((a,b) => (Math.pow(b.x-p.x,2)+Math.pow(b.z-p.z,2)) - (Math.pow(a.x-p.x,2)+Math.pow(a.z-p.z,2)));
 
-    // Sort objects by distance
-    let objects = [
-        ...trees.map(t => ({...t, type:'tree'})),
-        ...titans.map(t => ({...t, type:'titan'}))
-    ];
-    objects.sort((a,b) => {
-        let distA = Math.pow(a.x-p.x,2) + Math.pow(a.z-p.z,2);
-        let distB = Math.pow(b.x-p.x,2) + Math.pow(b.z-p.z,2);
-        return distB - distA;
-    });
+    scene.forEach(obj => {
+        let pos = project(obj.x, 0, obj.z);
+        if(!pos) return;
 
-    objects.forEach(obj => {
         if(obj.type === 'tree') {
-            let pos = project(obj.x, 0, obj.z);
-            if(!pos) return;
-            ctx.fillStyle = '#3e2723';
-            ctx.fillRect(pos.x - obj.w*pos.scale/2, pos.y - obj.h*pos.scale, obj.w*pos.scale, obj.h*pos.scale);
+            // Trunk
+            ctx.fillStyle = '#2d1a0a';
+            ctx.fillRect(pos.x - obj.r*pos.s, pos.y - obj.h*pos.s, obj.r*2*pos.s, obj.h*pos.s);
+            // Foliage
+            ctx.fillStyle = '#1a3a1a';
+            ctx.beginPath();
+            ctx.arc(pos.x, pos.y - obj.h*pos.s, obj.r*4*pos.s, 0, Math.PI*2);
+            ctx.fill();
         } else if(obj.alive) {
-            let pos = project(obj.x, 0, obj.z);
-            if(!pos) return;
-            // Titan Body
-            ctx.fillStyle = '#d7ccc8';
-            ctx.fillRect(pos.x - obj.size*pos.scale/2, pos.y - obj.size*pos.scale*2, obj.size*pos.scale, obj.size*pos.scale*2);
-            // Weak Spot (Neck)
-            ctx.fillStyle = 'red';
-            ctx.fillRect(pos.x - 20*pos.scale, pos.y - obj.size*pos.scale*1.9, 40*pos.scale, 20*pos.scale);
+            // Titan
+            ctx.fillStyle = '#e2e8f0';
+            ctx.fillRect(pos.x - 50*pos.s, pos.y - obj.h*pos.s, 100*pos.s, obj.h*pos.s);
+            // Nape (Red Spot)
+            ctx.fillStyle = '#f00';
+            ctx.fillRect(pos.x - 20*pos.s, pos.y - obj.h*pos.s*0.95, 40*pos.s, 30*pos.s);
         }
     });
 
-    // Draw Ropes
-    ctx.strokeStyle = '#eee';
-    ctx.lineWidth = 2;
-    [leftAnchor, rightAnchor].forEach(a => {
-        if(a) {
-            let pos = project(a.x, a.y, a.z);
-            if(pos) {
-                ctx.beginPath();
-                ctx.moveTo(midX, h);
-                ctx.lineTo(pos.x, pos.y);
-                ctx.stroke();
-            }
+    // Ropes
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1;
+    ['o', 'p'].forEach(k => {
+        if(hooks[k]) {
+            let hp = project(hooks[k].x, hooks[k].y, hooks[k].z);
+            if(hp) { ctx.beginPath(); ctx.moveTo(k === 'o' ? w*0.3 : w*0.7, h); ctx.lineTo(hp.x, hp.y); ctx.stroke(); }
         }
     });
 
-    update();
+    // Sword Visuals
+    if(swordTimer > 0) {
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.arc(midX, midY, 150, 0, Math.PI/2);
+        ctx.stroke();
+    }
+
+    updatePhysics();
     requestAnimationFrame(draw);
 }
 
-init();
+resize();
 draw();
 </script>
 </body>
