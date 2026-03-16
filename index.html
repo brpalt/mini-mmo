@@ -3,34 +3,86 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>MINI MMO: ULTRA</title>
+    <title>MINI MMO: REVELATIONS</title>
     <link rel="stylesheet" href="style.css">
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 </head>
 <body>
+    <div id="boot-sequence">
+        <div class="terminal">
+            <p>> INITIALIZING NEURAL LINK...</p>
+            <p>> LOADING ASSETS: STICK_ASSET_v4.0</p>
+            <p>> ESTABLISHING P2P PROTOCOL...</p>
+            <div id="progress-bar"><div id="progress-fill"></div></div>
+        </div>
+    </div>
+
     <div id="overlay">
         <div id="login-card">
-            <h1>MINI <span style="color: #00f2ff;">MMO</span></h1>
-            <input type="text" id="username" placeholder="ENTER CALLSIGN..." maxlength="12">
-            <button onclick="startApp()">NEURAL LINK</button>
+            <h1>MINI <span class="neon-text">MMO</span></h1>
+            <p class="subtitle">BATTLE. COLLECT. EVOLVE.</p>
+            <div class="input-group">
+                <input type="text" id="username" placeholder="CALLSIGN" maxlength="12">
+                <select id="stick-color">
+                    <option value="#00f2ff">CYAN</option>
+                    <option value="#ff0044">CRIMSON</option>
+                    <option value="#33ff00">VENOM</option>
+                    <option value="#ffaa00">AMBER</option>
+                </select>
+            </div>
+            <button id="start-btn" onclick="startApp()">ENTER THE GRID</button>
+            <div class="server-status">SYSTEMS: <span style="color:#33ff00">OPTIMAL</span></div>
         </div>
     </div>
 
     <div id="game-ui" style="display:none;">
-        <div id="leaderboard"><h3>TOP SLAYERS</h3><div id="scores"></div></div>
-        <div id="killfeed"></div>
-        <div id="stats">
-            <div class="stat-bar"><div id="hp-fill"></div></div>
-            <div id="item-slots"></div>
+        <div class="hud-top">
+            <div id="player-card">
+                <div class="avatar-circle"></div>
+                <div class="player-info">
+                    <div id="hud-username">UNKNOWN</div>
+                    <div class="xp-bar"><div id="xp-fill"></div></div>
+                </div>
+            </div>
+            <div id="leaderboard">
+                <div class="lb-header">TOP OPERATIVES</div>
+                <div id="scores"></div>
+            </div>
         </div>
-        <div id="network-info">
-            ID: <span id="my-id">---</span>
-            <input type="text" id="joinId" placeholder="REMOTE ID">
-            <button onclick="joinGame()">CONNECT</button>
+
+        <div id="killfeed"></div>
+        <div id="system-alerts"></div>
+
+        <div class="hud-bottom">
+            <div class="health-container">
+                <div class="hp-label">VITALITY</div>
+                <div class="stat-bar-outer"><div id="hp-fill"></div></div>
+            </div>
+            <div id="inventory-grid">
+                <div class="slot" data-slot="1"></div>
+                <div class="slot" data-slot="2"></div>
+                <div class="slot" data-slot="3"></div>
+                <div class="slot" data-slot="4"></div>
+            </div>
+        </div>
+
+        <div id="network-panel">
+            <div class="panel-header">NETWORK MGR</div>
+            <div class="id-tag">MY_ID: <span id="my-id">...</span></div>
+            <div class="conn-input">
+                <input type="text" id="joinId" placeholder="REMOTE ID">
+                <button onclick="joinGame()">SYNC</button>
+            </div>
+            <div id="debug-log"></div>
+        </div>
+
+        <div id="minimap">
+            <canvas id="mmCanvas" width="150" height="150"></canvas>
         </div>
     </div>
 
     <canvas id="gameCanvas"></canvas>
+
     <script src="game.js"></script>
 </body>
 </html>
