@@ -2,44 +2,35 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>VOID RUNNER: EXTREME</title>
+    <title>STARFIGHTER: EXTERNAL VIEW</title>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; color: #fff; font-family: 'Segoe UI', sans-serif; cursor: crosshair; }
-        canvas { display: block; filter: contrast(1.2) saturate(1.2); }
-        #overlay {
-            position: absolute; inset: 0; pointer-events: none;
-            display: flex; flex-direction: column; justify-content: space-between; padding: 30px;
-            background: radial-gradient(circle, transparent 40%, rgba(0,20,40,0.4) 100%);
+        body { margin: 0; background: #000; overflow: hidden; font-family: 'Arial Black', sans-serif; }
+        canvas { display: block; cursor: none; }
+        #hud {
+            position: absolute; top: 20px; left: 20px; color: #0f0;
+            pointer-events: none; letter-spacing: 2px;
         }
-        .stats { font-family: 'Courier New', monospace; font-size: 1.2rem; color: #0f0; text-shadow: 0 0 10px #0f0; }
-        #shield-bar { width: 200px; height: 10px; border: 1px solid #0ff; margin-top: 10px; }
-        #shield-fill { width: 100%; height: 100%; background: #0ff; transition: width 0.3s; }
-        #msg {
+        #ui-msg {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            text-align: center; display: none; pointer-events: auto;
+            color: #fff; text-align: center; background: rgba(0,0,0,0.8);
+            padding: 20px; border: 2px solid #0ff; display: block;
         }
-        .btn { 
-            background: #0ff; color: #000; padding: 10px 20px; border: none; 
-            cursor: pointer; font-weight: bold; margin-top: 20px;
-        }
+        .shield-container { width: 200px; height: 15px; border: 2px solid #0f0; margin-top: 5px; }
+        #shield-bar { width: 100%; height: 100%; background: #0f0; transition: 0.1s; }
     </style>
 </head>
 <body>
 
-<div id="overlay">
-    <div class="stats">
-        <div>SYS_LOG: NEURAL_LINK_ACTIVE</div>
-        <div>DIST: <span id="dist">0</span>m</div>
-        <div>SHIELD:</div>
-        <div id="shield-bar"><div id="shield-fill"></div></div>
-    </div>
-    <div style="text-align: right; color: #f0f;">STATUS: HYPER_DRIVE_READY</div>
+<div id="hud">
+    DISTANCE: <span id="dist">0</span>m<br>
+    SHIELD status
+    <div class="shield-container"><div id="shield-bar"></div></div>
 </div>
 
-<div id="msg" id="deathScreen">
-    <h1 style="font-size: 4rem; margin: 0; color: #f00;">HULL BREACH</h1>
-    <p>CRITICAL SYSTEM FAILURE - PILOT LOST</p>
-    <button class="btn" onclick="location.reload()">REBOOT SYSTEM</button>
+<div id="ui-msg" id="startScreen">
+    <h1>VOID RUNNER</h1>
+    <p>CLICK TO ENGAGE ENGINES</p>
+    <p style="font-size: 0.8rem; color: #0ff;">USE MOUSE TO STEER | COLLECT BLUE ORBS</p>
 </div>
 
 <canvas id="c"></canvas>
@@ -47,194 +38,215 @@
 <script>
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
-const shieldFill = document.getElementById('shield-fill');
+const shieldBar = document.getElementById('shield-bar');
 const distEl = document.getElementById('dist');
+const uiMsg = document.getElementById('ui-msg');
 
-let w, h, midX, midY;
+let w, h;
 let gameActive = false;
 let distance = 0;
 let shield = 100;
-let time = 0;
 
-// Ship Physics
-let pX = 0, pY = 0; // Screen space -1 to 1
-let vX = 0, vY = 0;
-
-// Entities
+// Ship variables
+let ship = { x: 0, y: 0, targetX: 0, targetY: 0, tilt: 0 };
 let obstacles = [];
-let stars = Array.from({length: 200}, () => ({ x: Math.random()-0.5, y: Math.random()-0.5, z: Math.random()*1000 }));
 let powerups = [];
+let stars = Array.from({length: 150}, () => ({ x: Math.random()-0.5, y: Math.random()-0.5, z: Math.random()*1000 }));
 
 function resize() {
     w = canvas.width = window.innerWidth;
     h = canvas.height = window.innerHeight;
-    midX = w / 2; midY = h / 2;
 }
 window.addEventListener('resize', resize);
 resize();
 
-// 1. Mouse Locking
-canvas.addEventListener('click', () => {
-    canvas.requestPointerLock();
-    gameActive = true;
+// Mouse Locking & Direct Movement
+canvas.addEventListener('mousedown', () => {
+    if(!gameActive) {
+        canvas.requestPointerLock();
+        gameActive = true;
+        uiMsg.style.display = 'none';
+        resetGame();
+    }
 });
 
 window.addEventListener('mousemove', (e) => {
     if (document.pointerLockElement === canvas) {
-        vX += e.movementX * 0.0005;
-        vY += e.movementY * 0.0005;
+        // Direct movement sensitivity
+        ship.targetX += e.movementX * 0.002;
+        ship.targetY += e.movementY * 0.002;
+        
+        // Clamp ship to screen bounds
+        ship.targetX = Math.max(-1.2, Math.min(1.2, ship.targetX));
+        ship.targetY = Math.max(-0.8, Math.min(0.8, ship.targetY));
+        
+        // Set tilt based on horizontal movement
+        ship.tilt = e.movementX * 0.05;
     }
 });
 
-function createAsteroid() {
-    return {
-        z: 2000,
-        x: (Math.random() - 0.5) * 8,
-        y: (Math.random() - 0.5) * 8,
-        size: 40 + Math.random() * 100,
-        rot: Math.random() * Math.PI * 2,
-        rotV: (Math.random() - 0.5) * 0.1,
-        seed: Math.random() * 100 // For procedural shape
-    };
+function resetGame() {
+    shield = 100;
+    distance = 0;
+    obstacles = [];
+    powerups = [];
+    loop();
 }
 
-function createPowerup() {
-    return { z: 2000, x: (Math.random()-0.5)*4, y: (Math.random()-0.5)*4, type: 'shield' };
-}
-
-function drawAsteroid(x, y, size, rot, seed) {
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(rot);
-    ctx.beginPath();
-    for(let i=0; i<8; i++) {
-        let r = size * (0.8 + Math.sin(seed + i) * 0.3);
-        let ang = (i / 8) * Math.PI * 2;
-        ctx.lineTo(Math.cos(ang) * r, Math.sin(ang) * r);
-    }
-    ctx.closePath();
+function drawShip() {
+    const screenX = w/2 + ship.x * w * 0.4;
+    const screenY = h/2 + ship.y * h * 0.4;
     
-    // Rock texture gradient
-    let grad = ctx.createRadialGradient(-size/3, -size/3, 0, 0, 0, size);
-    grad.addColorStop(0, '#888');
-    grad.addColorStop(1, '#222');
-    ctx.fillStyle = grad;
+    ctx.save();
+    ctx.translate(screenX, screenY);
+    ctx.rotate(ship.tilt); // Barrel roll tilt
+
+    // Engine Glow
+    const flicker = Math.random() * 10;
+    ctx.shadowBlur = 15 + flicker;
+    ctx.shadowColor = '#0ff';
+    
+    // Wings
+    ctx.fillStyle = '#444';
+    ctx.beginPath();
+    ctx.moveTo(-40, 10); ctx.lineTo(-60, 25); ctx.lineTo(60, 25); ctx.lineTo(40, 10);
     ctx.fill();
-    ctx.strokeStyle = '#444';
-    ctx.stroke();
+
+    // Body
+    ctx.fillStyle = '#888';
+    ctx.beginPath();
+    ctx.moveTo(0, -25); ctx.lineTo(-15, 15); ctx.lineTo(15, 15);
+    ctx.closePath();
+    ctx.fill();
+
+    // Cockpit Window
+    ctx.fillStyle = '#0cf';
+    ctx.fillRect(-5, -5, 10, 8);
+    
+    // Engine Flare
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(0, 18, 5 + flicker/2, 0, Math.PI*2);
+    ctx.fill();
+
     ctx.restore();
+    ctx.shadowBlur = 0;
 }
 
 function update() {
     if (!gameActive) return;
 
-    time += 0.01;
-    distance += 1;
-    
-    // Friction & Movement
-    pX += vX; pY += vY;
-    vX *= 0.95; vY *= 0.95;
+    distance += 2;
+    // Smooth Interpolation for Ship
+    ship.x += (ship.targetX - ship.x) * 0.15;
+    ship.y += (ship.targetY - ship.y) * 0.15;
+    ship.tilt *= 0.9; // Return to level
 
-    // Keep ship in bounds
-    pX = Math.max(-1.5, Math.min(1.5, pX));
-    pY = Math.max(-1, Math.min(1, pY));
+    // Spawn Logic
+    if (Math.random() < 0.1) {
+        obstacles.push({
+            z: 2000,
+            x: (Math.random() - 0.5) * 6,
+            y: (Math.random() - 0.5) * 4,
+            size: 30 + Math.random() * 80,
+            seed: Math.random() * 10
+        });
+    }
+    if (Math.random() < 0.01) {
+        powerups.push({ z: 2000, x: (Math.random()-0.5)*4, y: (Math.random()-0.5)*3 });
+    }
 
-    // Spawning
-    if (Math.random() < 0.08) obstacles.push(createAsteroid());
-    if (Math.random() < 0.01) powerups.push(createPowerup());
+    // Move Obstacles
+    for (let i = obstacles.length - 1; i >= 0; i--) {
+        let o = obstacles[i];
+        o.z -= 30; // Speed of travel
 
-    // Update Obstacles
-    obstacles.forEach((o, i) => {
-        o.z -= 25;
-        o.rot += o.rotV;
-        
-        // Collision
-        if (o.z < 100 && o.z > 0) {
-            let dx = (o.x - pX);
-            let dy = (o.y - pY);
-            if (Math.sqrt(dx*dx + dy*dy) < 0.2) {
-                shield -= 2;
-                o.z = -100; // Destroy on hit
+        // Collision logic
+        if (o.z < 150 && o.z > 50) {
+            let dx = o.x - ship.x;
+            let dy = o.y - ship.y;
+            if (Math.sqrt(dx*dx + dy*dy) < 0.3) {
+                shield -= 20;
+                obstacles.splice(i, 1);
                 if (shield <= 0) {
                     gameActive = false;
-                    document.getElementById('msg').style.display = 'block';
+                    uiMsg.style.display = 'block';
+                    uiMsg.innerHTML = `<h1>HULL DESTROYED</h1><p>DISTANCE: ${distance}m</p><button onclick="location.reload()" style="padding:10px; cursor:pointer">RETRY</button>`;
                     document.exitPointerLock();
                 }
             }
         }
         if (o.z < -100) obstacles.splice(i, 1);
-    });
+    }
 
-    // Update Powerups
-    powerups.forEach((p, i) => {
-        p.z -= 20;
-        if (p.z < 100 && p.z > 0) {
-            let dx = (p.x - pX); let dy = (p.y - pY);
-            if (Math.sqrt(dx*dx + dy*dy) < 0.3) {
-                shield = Math.min(100, shield + 30);
+    // Move Powerups
+    for (let i = powerups.length - 1; i >= 0; i--) {
+        let p = powerups[i];
+        p.z -= 30;
+        if (p.z < 150 && p.z > 50) {
+            let dx = p.x - ship.x;
+            let dy = p.y - ship.y;
+            if (Math.sqrt(dx*dx + dy*dy) < 0.4) {
+                shield = Math.min(100, shield + 25);
                 powerups.splice(i, 1);
             }
         }
-    });
+        if (p.z < -100) powerups.splice(i, 1);
+    }
 
-    shieldFill.style.width = shield + '%';
+    shieldBar.style.width = shield + '%';
+    shieldBar.style.backgroundColor = shield < 30 ? '#f00' : '#0f0';
     distEl.innerText = distance;
 }
 
 function draw() {
-    // Cinematic BG
-    let bgGrad = ctx.createRadialGradient(midX, midY, 0, midX, midY, w);
-    bgGrad.addColorStop(0, '#000b1a');
-    bgGrad.addColorStop(1, '#000');
-    ctx.fillStyle = bgGrad;
+    // Clear with Fade Effect (Motion Blur)
+    ctx.fillStyle = 'rgba(0, 0, 5, 0.4)';
     ctx.fillRect(0, 0, w, h);
 
     // Stars
-    ctx.fillStyle = "#fff";
+    ctx.fillStyle = '#fff';
     stars.forEach(s => {
-        s.z -= 10; if(s.z <= 1) s.z = 1000;
+        s.z -= 20; if(s.z <= 1) s.z = 1000;
         let sc = 400/s.z;
-        ctx.fillRect(midX + s.x*w*sc, midY + s.y*h*sc, 2, 2);
+        ctx.fillRect(w/2 + s.x*w*sc, h/2 + s.y*h*sc, 2, 2);
     });
 
-    // Draw Entities
-    [...obstacles, ...powerups].sort((a,b) => b.z - a.z).forEach(e => {
+    // Render Entities
+    const entities = [...obstacles.map(o => ({...o, type:'obs'})), ...powerups.map(p => ({...p, type:'pow'}))];
+    entities.sort((a,b) => b.z - a.z);
+
+    entities.forEach(e => {
         let sc = 600 / e.z;
         if (sc < 0) return;
-        let x = midX + (e.x - pX) * w * sc;
-        let y = midY + (e.y - pY) * h * sc;
+        let x = w/2 + (e.x - ship.x * 0.5) * w * sc; // Slight parallax
+        let y = h/2 + (e.y - ship.y * 0.5) * h * sc;
 
-        if (e.type === 'shield') {
-            ctx.fillStyle = '#0ff';
+        if (e.type === 'pow') {
             ctx.shadowBlur = 20; ctx.shadowColor = '#0ff';
-            ctx.beginPath(); ctx.arc(x, y, 15*sc, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#0ff';
+            ctx.beginPath(); ctx.arc(x, y, 10*sc, 0, Math.PI*2); ctx.fill();
             ctx.shadowBlur = 0;
         } else {
-            drawAsteroid(x, y, e.size * sc, e.rot, e.seed);
+            ctx.fillStyle = '#555';
+            ctx.beginPath();
+            for(let i=0; i<6; i++) {
+                let r = e.size * sc * (0.8 + Math.sin(e.seed + i));
+                let ang = (i/6)*Math.PI*2;
+                ctx.lineTo(x + Math.cos(ang)*r, y + Math.sin(ang)*r);
+            }
+            ctx.fill();
+            ctx.strokeStyle = '#222'; ctx.stroke();
         }
     });
 
-    // 3D COCKPIT HUD
-    ctx.strokeStyle = 'rgba(0, 255, 255, 0.3)';
-    ctx.lineWidth = 2;
-    // Glass frame
-    ctx.beginPath();
-    ctx.moveTo(0, h); ctx.lineTo(w*0.2, h*0.7); ctx.lineTo(w*0.8, h*0.7); ctx.lineTo(w, h);
-    ctx.stroke();
+    drawShip();
 
-    // Flight Assist Crosshair
-    let targetX = midX - (vX * 5000);
-    let targetY = midY - (vY * 5000);
-    ctx.strokeStyle = '#0f0';
-    ctx.beginPath();
-    ctx.arc(targetX, targetY, 10, 0, Math.PI*2);
-    ctx.moveTo(targetX-20, targetY); ctx.lineTo(targetX+20, targetY);
-    ctx.moveTo(targetX, targetY-20); ctx.lineTo(targetX, targetY+20);
-    ctx.stroke();
-
-    requestAnimationFrame(() => { update(); draw(); });
+    if (gameActive) requestAnimationFrame(draw);
 }
 
+// Kick off logic
+setInterval(update, 1000/60);
 draw();
 </script>
 </body>
